@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Calculator, Table as TableIcon, Activity, AlertCircle, Save, History, Trash2, Lightbulb, ChevronDown, ChevronUp, Image as ImageIcon, FileText, Plus, Eye, EyeOff } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 import { compileFormula } from './lib/parser';
 
 const COLORS = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c', '#0d9488', '#db2777'];
@@ -119,13 +119,12 @@ export default function App() {
   const exportPNG = async () => {
     if (!chartRef.current) return;
     try {
-      const canvas = await html2canvas(chartRef.current, {
+      const dataUrl = await toPng(chartRef.current, {
         backgroundColor: '#ffffff',
-        scale: 2, // Higher resolution
+        pixelRatio: 2, // Higher resolution
       });
-      const image = canvas.toDataURL("image/png");
       const link = document.createElement("a");
-      link.setAttribute("href", image);
+      link.setAttribute("href", dataUrl);
       const filename = chartTitle ? chartTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'formula_chart';
       link.setAttribute("download", `${filename}.png`);
       document.body.appendChild(link);
