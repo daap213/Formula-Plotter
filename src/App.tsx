@@ -75,6 +75,10 @@ export default function App() {
     setFormulas(formulas.map(f => f.id === id ? { ...f, expression } : f));
   };
 
+  const updateFormulaColor = (id: string, color: string) => {
+    setFormulas(formulas.map(f => f.id === id ? { ...f, color } : f));
+  };
+
   const removeFormula = (id: string) => {
     if (formulas.length <= 1) return;
     setFormulas(formulas.filter(f => f.id !== id));
@@ -221,7 +225,15 @@ export default function App() {
             const isHidden = hiddenFormulas.includes(c.id);
             return (
               <div key={c.id} className={`flex items-center gap-2 transition-opacity ${isHidden ? 'opacity-60' : 'opacity-100'}`}>
-                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#d4d4d8' : c.color }} />
+                <input
+                  type="color"
+                  value={c.color}
+                  onChange={(e) => updateFormulaColor(c.id, e.target.value)}
+                  disabled={isHidden}
+                  className="w-4 h-4 p-0 border-0 rounded-full cursor-pointer shrink-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:border-none [&::-moz-color-swatch]:rounded-full"
+                  style={{ opacity: isHidden ? 0.5 : 1 }}
+                  title="Change color"
+                />
                 <span className="font-medium text-neutral-500 italic hidden sm:inline w-12">f{index + 1}(x) =</span>
                 <div className="flex-1 relative">
                   <input
