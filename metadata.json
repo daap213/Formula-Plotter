@@ -1,0 +1,5 @@
+{
+  "name": "Excel Formula Plotter",
+  "description": "Plot and generate data tables from Excel trendline formulas.",
+  "requestFramePermissions": []
+}
