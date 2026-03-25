@@ -4,14 +4,25 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Calculator, Table as TableIcon, Activity, AlertCircle, Save, History, Trash2, Lightbulb, ChevronDown, ChevronUp, Image as ImageIcon, FileText } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Calculator, Table as TableIcon, Activity, AlertCircle, Save, History, Trash2, Lightbulb, ChevronDown, ChevronUp, Image as ImageIcon, FileText, Plus, Eye, EyeOff } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { compileFormula } from './lib/parser';
 
+const COLORS = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c', '#0d9488', '#db2777'];
+
+interface Formula {
+  id: string;
+  expression: string;
+  color: string;
+}
+
 export default function App() {
   const [chartTitle, setChartTitle] = useState('My Formula Plot');
-  const [formula, setFormula] = useState('y = 17e-0,2x');
+  const [formulas, setFormulas] = useState<Formula[]>([
+    { id: '1', expression: 'y = 17e-0,2x', color: COLORS[0] }
+  ]);
+  const [hiddenFormulas, setHiddenFormulas] = useState<string[]>([]);
   const [xStart, setXStart] = useState(10);
   const [xEnd, setXEnd] = useState(50);
   const [step, setStep] = useState(1);
@@ -32,11 +43,17 @@ export default function App() {
     }
   }, []);
 
-  const saveFormula = () => {
-    if (!formula.trim()) return;
-    const newHistory = [formula, ...savedFormulas.filter(f => f !== formula)].slice(0, 10);
-    setSavedFormulas(newHistory);
-    localStorage.setItem('excel-formula-history', JSON.stringify(newHistory));
+  const saveFormulas = () => {
+    const newHistory = [...savedFormulas];
+    formulas.forEach(f => {
+      const expr = f.expression.trim();
+      if (expr && !newHistory.includes(expr)) {
+        newHistory.unshift(expr);
+      }
+    });
+    const limitedHistory = newHistory.slice(0, 15);
+    setSavedFormulas(limitedHistory);
+    localStorage.setItem('excel-formula-history', JSON.stringify(limitedHistory));
   };
 
   const clearHistory = () => {
@@ -44,10 +61,51 @@ export default function App() {
     localStorage.removeItem('excel-formula-history');
   };
 
+  const addFormula = (expr: string = '') => {
+    if (formulas.length >= 7) return; // Limit to 7 formulas
+    setFormulas([...formulas, { 
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5), 
+      expression: expr, 
+      color: COLORS[formulas.length % COLORS.length] 
+    }]);
+  };
+
+  const updateFormula = (id: string, expression: string) => {
+    setFormulas(formulas.map(f => f.id === id ? { ...f, expression } : f));
+  };
+
+  const removeFormula = (id: string) => {
+    if (formulas.length <= 1) return;
+    setFormulas(formulas.filter(f => f.id !== id));
+    setHiddenFormulas(hiddenFormulas.filter(hiddenId => hiddenId !== id));
+  };
+
+  const toggleVisibility = (id: string) => {
+    setHiddenFormulas(prev => 
+      prev.includes(id) ? prev.filter(hiddenId => hiddenId !== id) : [...prev, id]
+    );
+  };
+
+  const loadExample = (expr: string) => {
+    if (formulas.length === 1 && formulas[0].expression === 'y = 17e-0,2x') {
+      updateFormula(formulas[0].id, expr);
+    } else {
+      addFormula(expr);
+    }
+  };
+
   const exportCSV = () => {
+    const visibleFormulas = formulas.filter(f => !hiddenFormulas.includes(f.id));
+    const headers = ['x', ...visibleFormulas.map((f, i) => `"f${formulas.indexOf(f)+1}(x): ${f.expression}"`)].join(',');
     const csvContent = "data:text/csv;charset=utf-8," 
-      + "x,y\n" 
-      + data.map(row => `${row.x},${row.y !== null ? row.y : 'NaN'}`).join("\n");
+      + headers + "\n" 
+      + data.map(row => {
+          return [
+            row.x, 
+            ...visibleFormulas.map(f => row[f.id] !== undefined && row[f.id] !== null ? row[f.id] : 'NaN')
+          ].join(',');
+        }).join("\n");
+        
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -78,11 +136,11 @@ export default function App() {
     }
   };
 
-  const { data, error, parsed } = useMemo(() => {
-    const { fn, error, parsed } = compileFormula(formula);
-    if (error || !fn) {
-      return { data: [], error: error || 'Invalid formula', parsed };
-    }
+  const { data, compiledFormulas } = useMemo(() => {
+    const compiled = formulas.map(f => {
+      const { fn, error, parsed } = compileFormula(f.expression);
+      return { ...f, fn, error, parsed };
+    });
 
     const dataPoints = [];
     const safeStep = Math.max(0.001, step); // Prevent infinite loops
@@ -92,12 +150,23 @@ export default function App() {
     for (let x = safeStart; x <= safeEnd; x += safeStep) {
       // Round x to avoid floating point precision issues in display
       const roundedX = Math.round(x * 1000) / 1000;
-      const y = fn(roundedX);
-      dataPoints.push({ x: roundedX, y: isNaN(y) ? null : Number(y.toFixed(4)) });
+      const pt: any = { x: roundedX };
+      
+      compiled.forEach(c => {
+        if (c.fn && !c.error) {
+          const y = c.fn(roundedX);
+          pt[c.id] = isNaN(y) ? null : Number(y.toFixed(4));
+        }
+      });
+      
+      dataPoints.push(pt);
     }
 
-    return { data: dataPoints, error: null, parsed };
-  }, [formula, xStart, xEnd, step]);
+    return { data: dataPoints, compiledFormulas: compiled };
+  }, [formulas, xStart, xEnd, step]);
+
+  const hasErrors = compiledFormulas.some(c => c.error);
+  const allErrors = compiledFormulas.filter(c => c.error).map(c => c.error);
 
   return (
     <div className="h-screen flex flex-col bg-neutral-50 text-neutral-900 font-sans overflow-hidden">
@@ -146,49 +215,92 @@ export default function App() {
       </header>
 
       {/* Controls Toolbar */}
-      <div className="bg-white border-b border-neutral-200 px-4 py-2 flex flex-wrap items-center gap-4 shrink-0 text-sm z-10 shadow-sm">
-        <div className="flex items-center gap-2 flex-1 min-w-[300px]">
-          <span className="font-medium text-neutral-500 italic">f(x) =</span>
-          <input
-            type="text"
-            value={formula}
-            onChange={(e) => setFormula(e.target.value)}
-            className="flex-1 px-3 py-1.5 border border-neutral-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono text-sm"
-            placeholder="17e-0,2x"
-          />
-          <button
-            onClick={saveFormula}
-            title="Save Formula"
-            className="p-1.5 text-neutral-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-          >
-            <Save className="w-4 h-4" />
-          </button>
-          {savedFormulas.length > 0 && (
-            <div className="flex items-center gap-1 border-l border-neutral-200 pl-2">
-              <History className="w-4 h-4 text-neutral-400" />
-              <select
-                onChange={(e) => {
-                  if (e.target.value) setFormula(e.target.value);
-                  e.target.value = "";
-                }}
-                className="w-24 px-1 py-1.5 bg-transparent border-none text-neutral-600 outline-none cursor-pointer"
-                value=""
-              >
-                <option value="" disabled>History...</option>
-                {savedFormulas.map((f, i) => (
-                  <option key={i} value={f}>{f}</option>
-                ))}
-              </select>
-              <button onClick={clearHistory} title="Clear History" className="p-1 text-neutral-400 hover:text-red-500">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
+      <div className="bg-white border-b border-neutral-200 px-4 py-3 flex flex-col md:flex-row gap-6 shrink-0 text-sm z-10 shadow-sm overflow-y-auto max-h-64">
+        {/* Formulas List */}
+        <div className="flex-1 space-y-2 min-w-[300px]">
+          {compiledFormulas.map((c, index) => {
+            const isHidden = hiddenFormulas.includes(c.id);
+            return (
+              <div key={c.id} className={`flex items-center gap-2 transition-opacity ${isHidden ? 'opacity-60' : 'opacity-100'}`}>
+                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: isHidden ? '#d4d4d8' : c.color }} />
+                <span className="font-medium text-neutral-500 italic hidden sm:inline w-12">f{index + 1}(x) =</span>
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={c.expression}
+                    onChange={(e) => updateFormula(c.id, e.target.value)}
+                    className={`w-full px-3 py-1.5 border ${c.error ? 'border-red-300 focus:ring-red-500' : 'border-neutral-300 focus:ring-blue-500'} rounded-md focus:ring-2 outline-none font-mono text-sm pr-8`}
+                    placeholder="e.g. 17e-0,2x"
+                  />
+                  {c.error && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500" title={c.error}>
+                      <AlertCircle className="w-4 h-4" />
+                    </div>
+                  )}
+                </div>
+                <button 
+                  onClick={() => toggleVisibility(c.id)} 
+                  className="p-1.5 text-neutral-400 hover:text-blue-600 rounded-md transition-colors" 
+                  title={isHidden ? "Show formula" : "Hide formula"}
+                >
+                  {isHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+                {formulas.length > 1 && (
+                  <button onClick={() => removeFormula(c.id)} className="p-1.5 text-neutral-400 hover:text-red-500 rounded-md transition-colors" title="Remove formula">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          
+          <div className="flex flex-wrap items-center gap-3 pl-0 sm:pl-16 pt-1">
+            <button 
+              onClick={() => addFormula()} 
+              disabled={formulas.length >= 7}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Formula
+            </button>
+            
+            <div className="w-px h-4 bg-neutral-300 hidden sm:block"></div>
+            
+            <button
+              onClick={saveFormulas}
+              title="Save all valid formulas to history"
+              className="text-xs font-medium text-neutral-600 hover:text-blue-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+            >
+              <Save className="w-3.5 h-3.5" /> Save to History
+            </button>
+
+            {savedFormulas.length > 0 && (
+              <div className="flex items-center gap-1">
+                <History className="w-3.5 h-3.5 text-neutral-400" />
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) addFormula(e.target.value);
+                    e.target.value = "";
+                  }}
+                  className="w-28 px-1 py-1 bg-transparent border-none text-neutral-600 outline-none cursor-pointer text-xs"
+                  value=""
+                >
+                  <option value="" disabled>Load from history...</option>
+                  {savedFormulas.map((f, i) => (
+                    <option key={i} value={f}>{f}</option>
+                  ))}
+                </select>
+                <button onClick={clearHistory} title="Clear History" className="p-1 text-neutral-400 hover:text-red-500">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-4 bg-neutral-50 px-3 py-1.5 rounded-md border border-neutral-200">
-          <div className="flex items-center gap-2">
-            <span className="text-neutral-500 font-medium">X:</span>
+        {/* X and Step Controls */}
+        <div className="flex flex-col gap-3 border-t md:border-t-0 md:border-l border-neutral-200 pt-3 md:pt-0 md:pl-6 shrink-0">
+          <div className="flex items-center gap-2 bg-neutral-50 px-3 py-2 rounded-md border border-neutral-200">
+            <span className="text-neutral-500 font-medium w-10">X Axis:</span>
             <input
               type="number"
               value={xStart}
@@ -203,9 +315,8 @@ export default function App() {
               className="w-16 px-2 py-1 border border-neutral-300 rounded text-center outline-none focus:border-blue-500"
             />
           </div>
-          <div className="w-px h-4 bg-neutral-300"></div>
-          <div className="flex items-center gap-2">
-            <span className="text-neutral-500 font-medium">Step:</span>
+          <div className="flex items-center gap-2 bg-neutral-50 px-3 py-2 rounded-md border border-neutral-200">
+            <span className="text-neutral-500 font-medium w-10">Step:</span>
             <select
               value={stepMode}
               onChange={(e) => {
@@ -241,10 +352,10 @@ export default function App() {
             <span className="font-medium text-blue-800 flex items-center gap-1.5 whitespace-nowrap">
               <Lightbulb className="w-4 h-4" /> Try:
             </span>
-            <button onClick={() => setFormula('y = 17e-0,2x')} className="whitespace-nowrap px-3 py-1 bg-white rounded border border-blue-200 hover:border-blue-400 text-blue-700 font-mono text-xs transition-colors">y = 17e-0,2x</button>
-            <button onClick={() => setFormula('y = -1E-02x3 + 0,31x2 - 0,13x + 12')} className="whitespace-nowrap px-3 py-1 bg-white rounded border border-blue-200 hover:border-blue-400 text-blue-700 font-mono text-xs transition-colors">y = -1E-02x3 + 0,31x2 - 0,13x + 12</button>
-            <button onClick={() => setFormula('y = 7e-1E-03x')} className="whitespace-nowrap px-3 py-1 bg-white rounded border border-blue-200 hover:border-blue-400 text-blue-700 font-mono text-xs transition-colors">y = 7e-1E-03x</button>
-            <button onClick={() => setFormula('y = -2,5ln(x) + 14,45')} className="whitespace-nowrap px-3 py-1 bg-white rounded border border-blue-200 hover:border-blue-400 text-blue-700 font-mono text-xs transition-colors">y = -2,5ln(x) + 14,45</button>
+            <button onClick={() => loadExample('y = 17e-0,2x')} className="whitespace-nowrap px-3 py-1 bg-white rounded border border-blue-200 hover:border-blue-400 text-blue-700 font-mono text-xs transition-colors">y = 17e-0,2x</button>
+            <button onClick={() => loadExample('y = -1E-02x3 + 0,31x2 - 0,13x + 12')} className="whitespace-nowrap px-3 py-1 bg-white rounded border border-blue-200 hover:border-blue-400 text-blue-700 font-mono text-xs transition-colors">y = -1E-02x3 + 0,31x2 - 0,13x + 12</button>
+            <button onClick={() => loadExample('y = 7e-1E-03x')} className="whitespace-nowrap px-3 py-1 bg-white rounded border border-blue-200 hover:border-blue-400 text-blue-700 font-mono text-xs transition-colors">y = 7e-1E-03x</button>
+            <button onClick={() => loadExample('y = -2,5ln(x) + 14,45')} className="whitespace-nowrap px-3 py-1 bg-white rounded border border-blue-200 hover:border-blue-400 text-blue-700 font-mono text-xs transition-colors">y = -2,5ln(x) + 14,45</button>
           </div>
         </div>
       )}
@@ -253,58 +364,68 @@ export default function App() {
       <div className="flex-1 flex min-h-0">
         {/* Chart Area */}
         <div className="flex-1 flex flex-col p-4 relative bg-neutral-50">
-          {error ? (
-            <div className="m-auto bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-start gap-3 max-w-md">
-              <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
-              <div>
-                <h3 className="font-medium">Error parsing formula</h3>
-                <p className="text-sm opacity-80 mt-1">{error}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 bg-white rounded-xl border border-neutral-200 shadow-sm p-4 flex flex-col min-h-0 relative" ref={chartRef}>
-              {parsed && (
-                <div className="absolute top-4 left-6 text-xs text-neutral-400 font-mono bg-white/80 px-2 py-1 rounded pointer-events-none z-10">
-                  JS: {parsed}
-                </div>
-              )}
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data} margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis 
-                    dataKey="x" 
-                    type="number" 
-                    domain={['dataMin', 'dataMax']} 
-                    tickFormatter={(val) => val.toFixed(1)}
-                    stroke="#888888"
-                  />
-                  <YAxis 
-                    domain={['auto', 'auto']} 
-                    tickFormatter={(val) => val.toFixed(2)}
-                    stroke="#888888"
-                  />
-                  <Tooltip 
-                    formatter={(value: number) => [value.toFixed(4), 'y']}
-                    labelFormatter={(label: number) => `x = ${label}`}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="y" 
-                    stroke="#2563eb" 
-                    strokeWidth={2.5} 
-                    dot={data.length < 50 ? { r: 3, fill: '#2563eb', strokeWidth: 0 } : false}
-                    activeDot={{ r: 6, strokeWidth: 0 }}
-                    animationDuration={300}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+          <div className="flex-1 bg-white rounded-xl border border-neutral-200 shadow-sm p-4 flex flex-col min-h-0 relative" ref={chartRef}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={data} margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis 
+                  dataKey="x" 
+                  type="number" 
+                  domain={['dataMin', 'dataMax']} 
+                  tickFormatter={(val) => val.toFixed(1)}
+                  stroke="#888888"
+                />
+                <YAxis 
+                  domain={['auto', 'auto']} 
+                  tickFormatter={(val) => val.toFixed(2)}
+                  stroke="#888888"
+                />
+                <Tooltip 
+                  formatter={(value: number, name: string) => {
+                    const formula = compiledFormulas.find(c => c.id === name);
+                    return [value.toFixed(4), formula ? `f${compiledFormulas.indexOf(formula) + 1}(x)` : name];
+                  }}
+                  labelFormatter={(label: number) => `x = ${label}`}
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend 
+                  verticalAlign="top" 
+                  height={36} 
+                  iconType="circle" 
+                  formatter={(value, entry, index) => {
+                    const formula = compiledFormulas.find(c => c.id === value);
+                    const isHidden = hiddenFormulas.includes(value);
+                    return <span className={`font-medium cursor-pointer transition-colors ${isHidden ? 'text-neutral-400 line-through' : 'text-neutral-600'}`}>f{formula ? compiledFormulas.indexOf(formula) + 1 : index + 1}(x)</span>;
+                  }} 
+                  onClick={(e) => {
+                    if (e.dataKey && typeof e.dataKey === 'string') {
+                      toggleVisibility(e.dataKey);
+                    }
+                  }}
+                />
+                
+                {compiledFormulas.map((c, i) => (
+                  c.fn && !c.error && !hiddenFormulas.includes(c.id) && (
+                    <Line 
+                      key={c.id}
+                      type="monotone" 
+                      dataKey={c.id} 
+                      name={c.id}
+                      stroke={c.color} 
+                      strokeWidth={2.5} 
+                      dot={data.length < 50 ? { r: 3, fill: c.color, strokeWidth: 0 } : false}
+                      activeDot={{ r: 6, strokeWidth: 0 }}
+                      animationDuration={300}
+                    />
+                  )
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Data Table Sidebar */}
-        <div className="w-72 bg-white border-l border-neutral-200 flex flex-col shrink-0 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+        <div className="w-80 bg-white border-l border-neutral-200 flex flex-col shrink-0 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
           <div className="px-4 py-3 border-b border-neutral-200 flex items-center gap-2 shrink-0 bg-neutral-50/50">
             <TableIcon className="w-4 h-4 text-neutral-500" />
             <h2 className="font-medium text-sm">Data Points</h2>
@@ -315,14 +436,28 @@ export default function App() {
               <thead className="text-xs text-neutral-500 uppercase bg-white sticky top-0 z-10 shadow-sm">
                 <tr>
                   <th className="px-4 py-2 font-medium border-b border-neutral-200">x</th>
-                  <th className="px-4 py-2 font-medium border-b border-neutral-200">y</th>
+                  {formulas.map((f, i) => {
+                    if (hiddenFormulas.includes(f.id)) return null;
+                    return (
+                      <th key={f.id} className="px-4 py-2 font-medium border-b border-neutral-200" style={{ color: f.color }}>
+                        f{i + 1}(y)
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {data.map((point, i) => (
                   <tr key={i} className="hover:bg-neutral-50 transition-colors">
                     <td className="px-4 py-2 font-mono text-neutral-500 text-xs">{point.x}</td>
-                    <td className="px-4 py-2 font-mono font-medium text-neutral-700 text-xs">{point.y !== null ? point.y : 'NaN'}</td>
+                    {formulas.map(f => {
+                      if (hiddenFormulas.includes(f.id)) return null;
+                      return (
+                        <td key={f.id} className="px-4 py-2 font-mono font-medium text-neutral-700 text-xs">
+                          {point[f.id] !== undefined && point[f.id] !== null ? point[f.id] : 'NaN'}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
@@ -333,3 +468,4 @@ export default function App() {
     </div>
   );
 }
+
