@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Calculator, Table as TableIcon, Activity, AlertCircle } from 'lucide-react';
+import { Calculator, Table as TableIcon, Activity, AlertCircle, Save, History, Trash2 } from 'lucide-react';
 import { compileFormula } from './lib/parser';
 
 export default function App() {
@@ -13,6 +13,32 @@ export default function App() {
   const [xStart, setXStart] = useState(10);
   const [xEnd, setXEnd] = useState(50);
   const [step, setStep] = useState(1);
+  const [stepMode, setStepMode] = useState('1');
+  const [savedFormulas, setSavedFormulas] = useState<string[]>([]);
+
+  // Load saved formulas on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('excel-formula-history');
+      if (saved) {
+        setSavedFormulas(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error('Failed to load history', e);
+    }
+  }, []);
+
+  const saveFormula = () => {
+    if (!formula.trim()) return;
+    const newHistory = [formula, ...savedFormulas.filter(f => f !== formula)].slice(0, 10);
+    setSavedFormulas(newHistory);
+    localStorage.setItem('excel-formula-history', JSON.stringify(newHistory));
+  };
+
+  const clearHistory = () => {
+    setSavedFormulas([]);
+    localStorage.removeItem('excel-formula-history');
+  };
 
   const { data, error, parsed } = useMemo(() => {
     const { fn, error, parsed } = compileFormula(formula);
@@ -56,19 +82,59 @@ export default function App() {
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
                   Formula
                 </label>
-                <input
-                  type="text"
-                  value={formula}
-                  onChange={(e) => setFormula(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  placeholder="e.g. y = 17e-0,2x"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={formula}
+                    onChange={(e) => setFormula(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    placeholder="e.g. y = 17e-0,2x"
+                  />
+                  <button
+                    onClick={saveFormula}
+                    title="Save Formula"
+                    className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors flex-shrink-0"
+                  >
+                    <Save className="w-5 h-5" />
+                  </button>
+                </div>
                 {parsed && !error && (
                   <p className="text-xs text-neutral-500 mt-1 font-mono bg-neutral-100 p-1 rounded overflow-x-auto">
                     JS: {parsed}
                   </p>
                 )}
               </div>
+
+              {savedFormulas.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-neutral-700 flex items-center gap-1.5">
+                      <History className="w-4 h-4" />
+                      Saved Formulas
+                    </label>
+                    <button
+                      onClick={clearHistory}
+                      title="Clear History"
+                      className="text-neutral-400 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) setFormula(e.target.value);
+                      e.target.value = ""; // Reset select so same option can be clicked again
+                    }}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm"
+                    value=""
+                  >
+                    <option value="" disabled>Select a saved formula...</option>
+                    {savedFormulas.map((f, i) => (
+                      <option key={i} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -97,16 +163,36 @@ export default function App() {
 
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Step Size
+                  Step Size (Units)
                 </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.001"
-                  value={step}
-                  onChange={(e) => setStep(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
+                <div className="space-y-2">
+                  <select
+                    value={stepMode}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setStepMode(val);
+                      if (val === '1') setStep(1);
+                      if (val === '0.1') setStep(0.1);
+                    }}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  >
+                    <option value="1">1 by 1</option>
+                    <option value="0.1">0.1 by 0.1</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  
+                  {stepMode === 'custom' && (
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.001"
+                      value={step}
+                      onChange={(e) => setStep(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Enter custom step"
+                    />
+                  )}
+                </div>
               </div>
             </div>
           </div>
