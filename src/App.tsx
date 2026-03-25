@@ -7,6 +7,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Calculator, Table as TableIcon, Activity, AlertCircle, Save, History, Trash2, Lightbulb, ChevronDown, ChevronUp, Image as ImageIcon, FileText, Plus, Eye, EyeOff } from 'lucide-react';
 import { toPng } from 'html-to-image';
+import * as XLSX from 'xlsx';
 import { compileFormula } from './lib/parser';
 
 const COLORS = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c', '#0d9488', '#db2777'];
@@ -94,26 +95,25 @@ export default function App() {
     }
   };
 
-  const exportCSV = () => {
+  const exportExcel = () => {
     const visibleFormulas = formulas.filter(f => !hiddenFormulas.includes(f.id));
-    const headers = ['x', ...visibleFormulas.map((f, i) => `"f${formulas.indexOf(f)+1}(x): ${f.expression}"`)].join(',');
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + headers + "\n" 
-      + data.map(row => {
-          return [
-            row.x, 
-            ...visibleFormulas.map(f => row[f.id] !== undefined && row[f.id] !== null ? row[f.id] : 'NaN')
-          ].join(',');
-        }).join("\n");
-        
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    
+    // Prepare data with proper headers
+    const exportData = data.map(row => {
+      const rowData: any = { x: row.x };
+      visibleFormulas.forEach((f) => {
+        const header = `f${formulas.indexOf(f)+1}(x): ${f.expression}`;
+        rowData[header] = row[f.id] !== undefined && row[f.id] !== null ? row[f.id] : 'NaN';
+      });
+      return rowData;
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
+
     const filename = chartTitle ? chartTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'formula_data';
-    link.setAttribute("download", `${filename}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    XLSX.writeFile(workbook, `${filename}.xlsx`);
   };
 
   const exportPNG = async () => {
@@ -203,12 +203,12 @@ export default function App() {
             <span className="hidden lg:inline">PNG</span>
           </button>
           <button
-            onClick={exportCSV}
+            onClick={exportExcel}
             className="text-sm font-medium text-neutral-600 hover:text-blue-600 flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
-            title="Export Data as CSV"
+            title="Export Data as Excel"
           >
             <FileText className="w-4 h-4" />
-            <span className="hidden lg:inline">CSV</span>
+            <span className="hidden lg:inline">Excel</span>
           </button>
         </div>
       </header>
