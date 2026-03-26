@@ -224,42 +224,52 @@ export default function App() {
           {compiledFormulas.map((c, index) => {
             const isHidden = hiddenFormulas.includes(c.id);
             return (
-              <div key={c.id} className={`flex items-center gap-2 transition-opacity ${isHidden ? 'opacity-60' : 'opacity-100'}`}>
-                <input
-                  type="color"
-                  value={c.color}
-                  onChange={(e) => updateFormulaColor(c.id, e.target.value)}
-                  disabled={isHidden}
-                  className="w-4 h-4 p-0 border-0 rounded-full cursor-pointer shrink-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:border-none [&::-moz-color-swatch]:rounded-full"
-                  style={{ opacity: isHidden ? 0.5 : 1 }}
-                  title="Change color"
-                />
-                <span className="font-medium text-neutral-500 italic hidden sm:inline w-12">f{index + 1}(x) =</span>
-                <div className="flex-1 relative">
+              <div key={c.id} className={`flex flex-col gap-1 transition-opacity ${isHidden ? 'opacity-60' : 'opacity-100'}`}>
+                <div className="flex items-center gap-2">
                   <input
-                    type="text"
-                    value={c.expression}
-                    onChange={(e) => updateFormula(c.id, e.target.value)}
-                    className={`w-full px-3 py-1.5 border ${c.error ? 'border-red-300 focus:ring-red-500' : 'border-neutral-300 focus:ring-blue-500'} rounded-md focus:ring-2 outline-none font-mono text-sm pr-8`}
-                    placeholder="e.g. 17e-0,2x"
+                    type="color"
+                    value={c.color}
+                    onChange={(e) => updateFormulaColor(c.id, e.target.value)}
+                    disabled={isHidden}
+                    className="w-4 h-4 p-0 border-0 rounded-full cursor-pointer shrink-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:border-none [&::-moz-color-swatch]:rounded-full"
+                    style={{ opacity: isHidden ? 0.5 : 1 }}
+                    title="Change color"
                   />
-                  {c.error && (
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500" title={c.error}>
-                      <AlertCircle className="w-4 h-4" />
-                    </div>
+                  <span className="font-medium text-neutral-500 italic hidden sm:inline w-12">f{index + 1}(x) =</span>
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      value={c.expression}
+                      onChange={(e) => updateFormula(c.id, e.target.value)}
+                      className={`w-full px-3 py-1.5 border ${c.error ? 'border-red-300 focus:ring-red-500' : 'border-neutral-300 focus:ring-blue-500'} rounded-md focus:ring-2 outline-none font-mono text-sm pr-8`}
+                      placeholder="e.g. 17e-0,2x"
+                    />
+                    {c.error && (
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500" title={c.error}>
+                        <AlertCircle className="w-4 h-4" />
+                      </div>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => toggleVisibility(c.id)} 
+                    className="p-1.5 text-neutral-400 hover:text-blue-600 rounded-md transition-colors" 
+                    title={isHidden ? "Show formula" : "Hide formula"}
+                  >
+                    {isHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                  {formulas.length > 1 && (
+                    <button onClick={() => removeFormula(c.id)} className="p-1.5 text-neutral-400 hover:text-red-500 rounded-md transition-colors" title="Remove formula">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
-                <button 
-                  onClick={() => toggleVisibility(c.id)} 
-                  className="p-1.5 text-neutral-400 hover:text-blue-600 rounded-md transition-colors" 
-                  title={isHidden ? "Show formula" : "Hide formula"}
-                >
-                  {isHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-                {formulas.length > 1 && (
-                  <button onClick={() => removeFormula(c.id)} className="p-1.5 text-neutral-400 hover:text-red-500 rounded-md transition-colors" title="Remove formula">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                {c.parsed && !c.error && c.expression.trim() !== '' && (
+                  <div className="pl-[24px] sm:pl-[80px] text-[11px] text-neutral-400 font-mono flex items-center gap-1.5">
+                    <span className="text-neutral-300">↳</span> 
+                    <span title="Fórmula interpretada por el sistema">
+                      {c.parsed}
+                    </span>
+                  </div>
                 )}
               </div>
             );
