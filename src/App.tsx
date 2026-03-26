@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Brush } from 'recharts';
 import { Calculator, Table as TableIcon, Activity, AlertCircle, Save, History, Trash2, Lightbulb, ChevronDown, ChevronUp, Image as ImageIcon, FileText, Plus, Eye, EyeOff } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import * as XLSX from 'xlsx';
@@ -440,6 +440,14 @@ export default function App() {
                     />
                   )
                 ))}
+                
+                <Brush 
+                  dataKey="x" 
+                  height={30} 
+                  stroke="#94a3b8" 
+                  fill="#f8fafc"
+                  tickFormatter={(val) => val.toFixed(1)}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
